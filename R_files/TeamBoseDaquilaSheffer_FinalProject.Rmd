@@ -1,0 +1,439 @@
+---
+title: "COMP4441_FinalProject"
+author: "Adi Bose, Daniel D'Aquila, Grant Sheffer"
+date: "8/9/2021"
+output: html_document
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(knitr)
+library(ggpubr)
+library(boot)
+library(lawstat)
+library(ggplot2)
+library(lattice)
+library(caret)
+```
+
+Weekly data, IndexNum indicates which week it is of each year. 
+
+Loading Data into R Studio 
+```{r}
+avocadoData <- read.csv("avocado.csv")
+avocadoData <- filter(avocadoData, year != 2018)
+
+avocadoData2018 <- read.csv("2018avocadoClean.csv")
+
+sapply(avocadoData, class)
+sapply(avocadoData2018, class)
+
+avocadoData$Date <- as.Date(avocadoData$Date,format="%Y-%m-%d")
+avocadoData2018$Date <- as.Date(avocadoData2018$Date,format="%m/%d/%y")
+
+colnames(avocadoData)[colnames(avocadoData) == "X"] <- "IndexNum"
+colnames(avocadoData2018)[colnames(avocadoData2018) == "Index"] <- "IndexNum"
+
+avocadoData$regionFactor <- factor(avocadoData$region)
+avocadoData2018$regionFactor <- factor(avocadoData2018$region)
+
+avocadoData$typeFactor <- factor(avocadoData$type)
+avocadoData2018$typeFactor <- factor(avocadoData2018$type)
+
+avocadoData$DateNumeric <- as.numeric(avocadoData$Date)
+avocadoData2018$DateNumeric <- as.numeric(avocadoData2018$Date)
+
+sapply(avocadoData, class)
+sapply(avocadoData2018, class)
+
+```
+
+
+Data filtering by regions
+```{r}
+# Cleaning the data by regions [removing the 'state' entries]
+
+table(avocadoData$region)
+
+regions = c("Midsouth", "Northeast", "Plains", "SouthCentral", "Southeast", "West", "California", "GreatLakes")
+AvocadoRegions <- filter(avocadoData, region %in% regions)
+
+AvocadoRegionsConven <- filter(AvocadoRegions, type == "conventional")
+
+AvocadoRegionsOrg <- filter(AvocadoRegions, type == "organic")
+
+```
+
+
+Experimenting with different plots
+```{r}
+### Average price across all regions wrt time (2015-early 2018)
+plot(AveragePrice~Date, data = AvocadoRegions)
+
+
+### AvocadoRegions plots
+## Date vs Volume [comparing regions]
+ggplot(AvocadoRegions, aes(Date, Total.Volume)) + geom_point(aes(color = factor(regionFactor))) + theme(legend.position = "bottom")
+
+## Date vs Average Price [comparing regions]
+ggplot(AvocadoRegions, aes(Date, AveragePrice)) + geom_point(aes(color = factor(regionFactor))) + theme(legend.position = "bottom")
+
+## Date vs Volume [comparing type]
+ggplot(AvocadoRegions, aes(Date, Total.Volume)) + geom_point(aes(color = factor(type))) + theme(legend.position = "bottom")
+
+
+### Organic 
+## Date vs Volume [comparing regions]
+ggplot(AvocadoRegionsOrg, aes(Date, Total.Volume)) + geom_point(aes(color = factor(regionFactor))) + theme(legend.position = "bottom")
+
+## Date vs Average Price [comparing regions]
+ggplot(AvocadoRegionsOrg, aes(Date, AveragePrice)) + geom_point(aes(color = factor(regionFactor))) + theme(legend.position = "bottom")
+
+
+### Conventional
+## Date vs Volume [comparing regions]
+ggplot(AvocadoRegionsConven, aes(Date, Total.Volume)) + geom_point(aes(color = factor(regionFactor))) + theme(legend.position = "bottom")
+
+## Date vs Average Price [comparing regions]
+ggplot(AvocadoRegionsConven, aes(Date, AveragePrice)) + geom_point(aes(color = factor(regionFactor))) + theme(legend.position = "bottom")
+
+
+### Efforts to see which region has the highest demand 
+plot(AveragePrice~regionFactor, data = AvocadoRegions) + abline(h = mean(AvocadoRegions$AveragePrice), col = "red")
+
+q <- ggplot(AvocadoRegions, aes(region, Total.Volume)) + 
+  geom_point(aes(color = factor(regionFactor)))
+
+q + theme(axis.text.x = element_text(angle = -45, vjust = 1.5, hjust=-0.1),
+          legend.position="none")
+
+```
+
+
+Linear regressions
+```{r}
+#### Linear Models (Conv + Org)
+## Average Price dependent on Date
+lm.All.1 <- lm(AveragePrice ~ Date, data = AvocadoRegions)
+summary(lm.All.1)
+
+## Average Price dependent on Date AND Total Bags
+lm.All.2 <- lm(AveragePrice ~ Date + Total.Bags, data = AvocadoRegions)
+summary(lm.All.2)
+
+## Average Price dependent on Date AND Total Bags AND Total Volume (Total Bags showing signs of insignificance)
+lm.All.3 <- lm(AveragePrice ~ Date + Total.Bags + Total.Volume, data = AvocadoRegions)
+summary(lm.All.3)
+
+## Average Price dependent on Date AND Total Bags AND Total Volume AND Type
+lm.All.4 <- lm(AveragePrice ~ Date + Total.Bags + Total.Volume + typeFactor, data = AvocadoRegions)
+summary(lm.All.4)
+
+## Average Price dependent on Date AND Total Volume and Type (Total Bags removed due to low significance)
+lm.All.5 <- lm(AveragePrice ~ Date + Total.Volume + typeFactor, data = AvocadoRegions)
+summary(lm.All.5)
+
+## Average Price dependent on Total Volume and Type (Date removed for comparative purposes)
+lm.All.6 <- lm(AveragePrice ~ Total.Volume + typeFactor, data = AvocadoRegions)
+summary(lm.All.6)
+
+## Average Price dependent on Total Volume (Type removed for comparative purposes)
+lm.All.7 <- lm(AveragePrice ~ Total.Volume, data = AvocadoRegions)
+summary(lm.All.7)
+
+
+#### Linear Models (Conventional)
+## Average Price dependent on Date
+lm.Conv.1 <- lm(AveragePrice ~ Date, data = AvocadoRegionsConven)
+summary(lm.Conv.1)
+
+## Average Price dependent on Date AND Total Bags
+lm.Conv.2 <- lm(AveragePrice ~ Date + Total.Bags, data = AvocadoRegionsConven)
+summary(lm.Conv.2)
+
+## Average Price dependent on Date AND Total Bags AND Total Volume
+lm.Conv.3 <- lm(AveragePrice ~ Date + Total.Bags + Total.Volume, data = AvocadoRegionsConven)
+summary(lm.Conv.3)
+
+
+#### Linear Models (Organic)
+## Average Price dependent on Date
+lm.Org.1 <- lm(AveragePrice ~ Date, data = AvocadoRegionsOrg)
+summary(lm.Org.1)
+
+## Average Price dependent on Date AND Total Bags
+lm.Org.2 <- lm(AveragePrice ~ Date + Total.Bags, data = AvocadoRegionsOrg)
+summary(lm.Org.2)
+
+## Average Price dependent on Date AND Total Bags AND Total Volume
+lm.Org.3 <- lm(AveragePrice ~ Date + Total.Bags + Total.Volume, data = AvocadoRegionsOrg)
+summary(lm.Org.3)
+
+```
+
+
+Polynomial Regressions
+```{r}
+### General viewing with a stat_smooth() 'regression' added
+## Conv + Org (appears to be a 6th order poly fit)
+g.All.test <- ggplot(AvocadoRegions, aes(Date, AveragePrice) ) +
+                        geom_point() +
+                        stat_smooth()
+## Conventional (appears to be a 6th order poly fit)
+g.Conv.test <- ggplot(AvocadoRegionsConven, aes(Date, AveragePrice) ) +
+                        geom_point() +
+                        stat_smooth()
+## Organic (appears to be a 6th order poly fit)
+g.Org.test <- ggplot(AvocadoRegionsOrg, aes(Date, AveragePrice) ) +
+                     geom_point() +
+                     stat_smooth()
+
+
+#### Polynomial Models (Conv + Org) ####
+## Model 1: 1 IV (Date)
+pm.All.1 <- lm(AveragePrice ~ poly(DateNumeric, 6, raw = TRUE),
+                              data = AvocadoRegions)
+summary(pm.All.1)
+
+## Model 2: 2 IV's (Date AND Total.Bags)
+pm.All.2 <- lm(AveragePrice ~ poly(DateNumeric, 6, raw = TRUE) +
+                              poly(Total.Bags, 6, raw = TRUE),
+                              data = AvocadoRegions)
+summary(pm.All.2)
+
+## Model 3: 3 IV's (Date AND Total.Bags AND Total.Volume)
+pm.All.3 <- lm(AveragePrice ~ poly(DateNumeric, 6, raw = TRUE) +
+                              poly(Total.Bags, 6, raw = TRUE) +
+                              poly(Total.Volume, 6, raw = TRUE),
+                              data = AvocadoRegions)
+summary(pm.All.3)
+
+## Model 4: 4 IV's (Date AND Total.Bags AND Total.Volume AND Type) (model does not like typeFactor)
+# pm.All.4 <- lm(AveragePrice ~ poly(DateNumeric, 6, raw = TRUE) +
+#                               poly(Total.Bags, 6, raw = TRUE) +
+#                               poly(Total.Volume, 6, raw = TRUE) +
+#                               poly(typeFactor, 6, raw = TRUE),
+#                               data = AvocadoRegions)
+# summary(pm.All.4)
+
+## Model 5: 2 IV's (Date AND Total.Volume) (removed Type due to incompatibility and Total.Bags due to statistical insignificance)
+pm.All.5 <- lm(AveragePrice ~ poly(DateNumeric, 6, raw = TRUE) +
+                              poly(Total.Volume, 6, raw = TRUE),
+                              data = AvocadoRegions)
+summary(pm.All.5)
+
+#### ANOVA (Conv + Org)
+## Models 1 and 2 (adding JUST Total.Bags)
+anova(pm.All.1, pm.All.2)
+
+## Models 1 and 5 (adding JUST Total.Volume)
+anova(pm.All.1, pm.All.5)
+
+## Models 5 and 3 (adding Total.Bags [already having Total.Volume])
+anova(pm.All.5, pm.All.3)
+
+## Models 2 and 3 (adding Total.Volume [already having Total.Bags])
+anova(pm.All.2, pm.All.3)
+
+
+#### Polynomial Models (Conventional) ####
+## Model 1: 1 IV (Date)
+pm.Conv.1 <- lm(AveragePrice ~ poly(DateNumeric, 6, raw = TRUE),
+                               data = AvocadoRegionsConven)
+summary(pm.Conv.1)
+
+## Model 2: 2 IV's (Date AND Total.Bags)
+pm.Conv.2 <- lm(AveragePrice ~ poly(DateNumeric, 6, raw = TRUE) +
+                               poly(Total.Bags, 6, raw = TRUE),
+                               data = AvocadoRegionsConven)
+summary(pm.Conv.2)
+
+## Model 3: 3 IV's (Date AND Total.Bags AND Total.Volume)
+pm.Conv.3 <- lm(AveragePrice ~ poly(DateNumeric, 6, raw = TRUE) +
+                               poly(Total.Bags, 6, raw = TRUE) +
+                               poly(Total.Volume, 6, raw = TRUE),
+                               data = AvocadoRegionsConven)
+summary(pm.Conv.3)
+
+## Model 4: 2 IV's (Date AND Total.Volume)
+pm.Conv.4 <- lm(AveragePrice ~ poly(DateNumeric, 6, raw = TRUE) +
+                               poly(Total.Volume, 6, raw = TRUE),
+                               data = AvocadoRegionsConven)
+summary(pm.Conv.4)
+
+#### ANOVA (Conventional)
+## Models 1 and 2 (adding JUST Total.Bags)
+anova(pm.Conv.1, pm.Conv.2)
+
+## Models 1 and 4 (adding JUST Total.Volume)
+anova(pm.Conv.1, pm.Conv.4)
+
+## Models 4 and 3 (adding Total.Bags [already having Total.Volume])
+anova(pm.Conv.4, pm.Conv.3)
+
+## Models 2 and 3 (adding Total.Volume [already having Total.Bags])
+anova(pm.Conv.2, pm.Conv.3)
+
+
+#### Polynomial Models (Organic) ####
+## Model 1: 1 IV (Date)
+pm.Org.1 <- lm(AveragePrice ~ poly(DateNumeric, 6, raw = TRUE),
+                              data = AvocadoRegionsOrg)
+summary(pm.Org.1)
+
+## Model 2: 2 IV's (Date AND Total.Bags)
+pm.Org.2 <- lm(AveragePrice ~ poly(DateNumeric, 6, raw = TRUE) +
+                              poly(Total.Bags, 6, raw = TRUE),
+                              data = AvocadoRegionsOrg)
+summary(pm.Org.2)
+
+## Model 3: 3 IV's (Date AND Total.Bags AND Total.Volume)
+pm.Org.3 <- lm(AveragePrice ~ poly(DateNumeric, 6, raw = TRUE) +
+                              poly(Total.Bags, 6, raw = TRUE) +
+                              poly(Total.Volume, 6, raw = TRUE),
+                              data = AvocadoRegionsOrg)
+summary(pm.Org.3)
+
+## Model 4: 2 IV's (Date AND Total.Volume)
+pm.Org.4 <- lm(AveragePrice ~ poly(DateNumeric, 6, raw = TRUE) +
+                              poly(Total.Volume, 6, raw = TRUE),
+                              data = AvocadoRegionsOrg)
+summary(pm.Org.4)
+
+#### ANOVA (Organic)
+## Models 1 and 2 (adding Total.Bags)
+anova(pm.All.1, pm.All.2)
+
+## Models 2 and 3 (adding Total.Volume)
+anova(pm.All.2, pm.All.3)
+
+## Models 4 and 3 (adding Total.Bags [already having Total.Volume])
+anova(pm.Org.4, pm.Org.3)
+
+## Models 2 and 3 (adding Total.Volume [already having Total.Bags])
+anova(pm.Org.2, pm.Org.3)
+```
+
+
+Price Predictions
+```{r}
+#### Predictions for Conv + Organic
+## pm.All.3
+price.pred.All <- data.frame(predict(pm.All.3, avocadoData2018))
+names(price.pred.All) <- c("pred")
+price.pred.All$actual <- avocadoData2018$AveragePrice
+price.pred.All$diff <- abs(price.pred.All$pred - price.pred.All$actual)
+mean(price.pred.All$diff)
+
+#### Predictions for Conventional
+## pm.Conv.3
+price.pred.Conv <- data.frame(predict(pm.Conv.4, avocadoData2018))
+names(price.pred.Conv) <- c("pred")
+price.pred.Conv$actual <- avocadoData2018$AveragePrice
+price.pred.Conv$diff <- abs(price.pred.Conv$pred - price.pred.Conv$actual)
+mean(price.pred.Conv$diff)
+
+#### Predictions for Organic
+## pm.Org.3
+price.pred.Org <- data.frame(predict(pm.Org.4, avocadoData2018))
+names(price.pred.Org) <- c("pred")
+price.pred.Org$actual <- avocadoData2018$AveragePrice
+price.pred.Org$diff <- abs(price.pred.Org$pred - price.pred.Org$actual)
+mean(price.pred.Org$diff)
+
+```
+
+
+SCRAP WORK/STUFF I DIDNT WANT TO DELETE BUT DUNNO WHAT TO DO WITH
+```{r}
+g2 <- lm(AveragePrice ~ DateNumeric + I(DateNumeric ^2), data = AvocadoRegionsOrg)
+
+summary(g2)
+#####summary(g)
+
+
+ggplot(AvocadoRegionsOrg, aes(DateNumeric, AveragePrice) ) +
+  geom_point() +
+  stat_smooth(method = lm, formula = y ~ poly(x, 2, raw = TRUE))
+
+ggplot(AvocadoRegionsOrg, aes(DateNumeric, AveragePrice) ) +
+  geom_point() +
+  stat_smooth(method = lm, formula = y ~ poly(x, 3, raw = TRUE))
+
+ggplot(AvocadoRegionsOrg, aes(DateNumeric, AveragePrice) ) +
+  geom_point() +
+  stat_smooth(method = lm, formula = y ~ poly(x, 4, raw = TRUE))
+
+ggplot(AvocadoRegionsOrg, aes(Total.Volume, AveragePrice) ) +
+  geom_point() +
+  stat_smooth(method = lm, formula = y ~ poly(x, 5, raw = TRUE))
+
+ggplot(AvocadoRegionsOrg, aes(Total.Volume, AveragePrice) ) +
+  geom_point() +
+  stat_smooth(method = lm, formula = y ~ poly(x, 6, raw = TRUE))
+
+g3 <- lm(AveragePrice ~ DateNumeric + I(DateNumeric ^2), data = AvocadoRegionsOrg)
+
+summary(g3)
+
+#######
+
+ggplot(AvocadoRegionsOrg, aes(DateNumeric, AveragePrice) ) +
+  geom_point() +
+  stat_smooth(method = lm, formula = y ~ poly(x, 6, raw = TRUE))
+
+g6 <- lm(AveragePrice ~ DateNumeric + I(DateNumeric ^6), data = AvocadoRegionsOrg)
+g66 <- lm(AveragePrice ~ poly(DateNumeric, 8, raw = TRUE), data = AvocadoRegionsOrg)
+
+summary(g66)
+summary(g6)
+
+
+ggplot(AvocadoRegionsOrg, aes(DateNumeric, AveragePrice) ) +
+  geom_point() +
+  stat_smooth(method = lm, formula = y ~ poly(x, 7, raw = TRUE))
+
+g7 <- lm(AveragePrice ~ DateNumeric + I(DateNumeric ^7), data = AvocadoRegionsOrg)
+
+summary(g7)
+```
+
+
+
+
+Things to do:
+Filter out the total US data 
+Data Cleaning: filter between regions and cities
+Filter by individual regions for data viewing purposes 
+Need to discuss variance 
+Run multiple regressions and compare them using an Anova test
+
+
+
+
+Things to complete by Monday:
+- Figure out how to use Polynomial regression correctly
+- Predicting/"forecasting" the average price of avocados give the variables 
+- Map a regress onto our data
+- ANOVA to compare linear and different degree polynomials 
+- Standardizing our R markdown document for group dispersal. 
+- Consistently mirror conventional and organic avocado data throughout the presentation/paper
+- Comparing two variables to test dependency 
+- Preliminary slide deck/power point started
+
+
+
+
+
+
+
+
+
+
+
+
+
+

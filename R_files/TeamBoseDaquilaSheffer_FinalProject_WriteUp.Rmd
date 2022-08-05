@@ -1,0 +1,300 @@
+---
+title: "COMP4441 Final Project"
+author: "Adi Bose, Daniel D'Aquila, Grant Sheffer"
+date: "8/19/2021"
+output:
+  word_document: default
+  html_document: default
+---
+
+## Data Source and Definitions:
+
+Our project was based on historical Avocado Prices throughout the US. The data was given as both a US city and US regional level. 
+
+Our data was sourced from Kaggle, which contained approximately 4 years of data ranging from 2015 to the earlier part of 2018, has 14 columns.The columns from our Kaggle source were an index (IndexNum) which represents one of 52 weeks in a given year, a date (Date) associate which correlated to Sundays, an average price (AveragePrice) of a single avocado, total number of avocados sold (Total.Volume), total number of avocados sold with a plu number of 4046 (4046), total number of avocados sold with a plu number of 4225 (4225), total number of avocados sold with a plu number of 4770 (4770), total number of bags sold (TotalBags), total number of small bags sold (SmallBags), total number of large bags sold (LargeBags), total number of extra large bags sold (XLargeBags), whether the avocado was organic or conventional (type), the year (Year), and the region or city the avocados were sold in (region). 
+
+We also sourced data from HASS website to complete the year of 2018 as the original data was derived from the HASS website.   
+
+The original Kaggle data stored in avocadoData and the HASS avocado data was stored in avocadoData2018. 
+
+In order to match the original Kaggle data, the HASS 2018 columns needed to be re-schema-ed. For example, the Geography column needed to be renamed to region. In addition to renaming fields from avocadoData2018, both date fields needed to be converted from a string to a date, the small amount of 2018 data in avocadoData was removed, the index columns were renamed from "X" to "IndexNum", and regions and type needed to be factorized in order to evaluate them in our models/project. 
+
+In addition, to narrow the scope of the project our team opted to focus solely on the US regions, cutting out cities and total US (obviously redundant), as well as filtering on only conventional avocado types. 
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(knitr)
+library(ggpubr)
+library(boot)
+library(lawstat)
+library(ggplot2)
+library(lattice)
+library(caret)
+
+#loading in the 2015-2018 data
+avocadoData <- read.csv("avocado.csv")
+sapply(avocadoData, class)
+
+#loading the 2018 only data
+avocadoData2018 <- read.csv("2018-plu-total-hab-data (1).csv")
+sapply(avocadoData2018, class)
+
+###Data cleaning
+
+#filtering original data set ranging from 2015-2017
+avocadoData <- filter(avocadoData, year != 2018)
+sapply(avocadoData, class)
+
+
+#Renaming columns in the 2018 data to match that of the main Kaggle data
+colnames(avocadoData2018)[colnames(avocadoData2018) == "Geography"] <- "region"
+colnames(avocadoData2018)[colnames(avocadoData2018) == "TotalBagged.Units"] <- "Total.Bags"
+colnames(avocadoData2018)[colnames(avocadoData2018) == "Current.Year.Week.Ending"] <- "Date"
+colnames(avocadoData2018)[colnames(avocadoData2018) == "Total.Bulk.and.Bags.Units"] <- "Total.Volume"
+colnames(avocadoData2018)[colnames(avocadoData2018) == "ASP.Current.Year"] <- "AveragePrice"
+
+sapply(avocadoData2018, class)
+
+#Date needs to be converted from a character to a date 
+avocadoData$Date <- as.Date(avocadoData$Date,format="%Y-%m-%d")
+avocadoData2018$Date <- as.Date(avocadoData2018$Date,format="%Y-%m-%d")
+
+#Renaming the given "X" column to IndexNum
+colnames(avocadoData)[colnames(avocadoData) == "X"] <- "IndexNum"
+colnames(avocadoData2018)[colnames(avocadoData2018) == "Index"] <- "IndexNum"
+
+#Creating a new column of region names that have been "factorized" in order to evaluate them
+avocadoData$regionFactor <- factor(avocadoData$region)
+avocadoData2018$regionFactor <- factor(avocadoData2018$region)
+
+#Creating a numeric date field, DateNumeric, to evaluate the data continuously 
+avocadoData$DateNumeric <- as.numeric(avocadoData$Date)
+avocadoData2018$DateNumeric <- as.numeric(avocadoData2018$Date)
+
+#Checking to make sure the data types are correct 
+sapply(avocadoData, class)
+sapply(avocadoData2018, class)
+
+table(avocadoData$region)
+
+#Separating the data into regional only
+regions = c("Midsouth", "Northeast", "Plains", "SouthCentral", "Southeast", "West", "California", "GreatLakes")
+AvocadoRegions <- filter(avocadoData, region %in% regions)
+avocadoData2018Regions <- filter(avocadoData2018, region %in% regions)
+
+#Separating the AvocadoRegions by avocado type  
+AvocadoRegionsConven <- filter(AvocadoRegions, type == "conventional")
+
+#Separating the avocadoData2018Regions by avocado type  
+avocadoData2018RegionsConven <- filter(avocadoData2018Regions, Type == "Conventional")
+```
+
+
+## Main features of data set presented with appropriate graphics:
+
+The following graphic plots 4 of the variables from our AvocadoRegions set against each other and allows us to look for any initial graphical relationships. This will be figure #1. 
+```{r echo=FALSE}
+
+#### plot of variables against each other
+# Plot of both Conven and org, too messy, split later
+df.plots <- subset(AvocadoRegions, select=c("AveragePrice", "Date", "Total.Volume", "Total.Bags"))
+plot(df.plots, main = "Figure #1")
+
+```
+
+
+The Total.Volume of AvocadoRegions was then plotted against Date with our regions distinguished by individual colors. This will be figure #2.
+```{r echo=FALSE}
+ggplot(AvocadoRegions, aes(Date, Total.Volume)) + geom_point(aes(color = factor(regionFactor))) + theme(legend.position = "bottom") + ggtitle("Figure #2")
+```
+
+
+In figure #1, we could see some relationships between our variables and avocado price. In figure #2 we can see a more distinct relationship between Total.Volume and Date as well as possible outliers towards the bottom of the graph that appear to have data points from each region.
+
+The following plot, figure #3, will also plot Total.Volume and Date but the points will be color-coded based off the different avocado types instead of regions.
+```{r echo=FALSE}
+#Color coding based on type to see the difference in consumption between the organic and conventional type
+ggplot(AvocadoRegions, aes(Date, Total.Volume)) + geom_point(aes(color = factor(type))) + theme(legend.position = "bottom") + ggtitle("Figure #3")
+
+```
+
+There appears to be a distinct separation between organic and conventional avocados as organic avocado appear to be clustered exclusively at the bottom of the plot throughout time. 
+
+Figure #4 will analyze the different regions and their own relationship of of Total.Volume of both organic and conventional avocados with the average price of conventional avocados to display the lack of a "skew" from the outliers or organic avocados. 
+
+```{r echo=FALSE}
+q <- ggplot(AvocadoRegions, aes(region, Total.Volume)) + 
+  geom_point(aes(color = factor(regionFactor)))
+
+q + geom_hline(yintercept=mean(AvocadoRegionsConven$Total.Volume)) + theme(axis.text.x = element_text(angle = -45, vjust = 1.5, hjust=-0.1), legend.position="none") + ggtitle("Figure #4")
+
+
+```
+
+The goal of the following figure, Figure #5, is to help understand a spread of conventional avocado prices per region.
+
+```{r echo=FALSE}
+q2 <- ggplot(AvocadoRegionsConven, aes(region, AveragePrice)) + 
+  geom_point(aes(color = factor(regionFactor)))
+
+q2 + geom_hline(yintercept=mean(AvocadoRegionsConven$AveragePrice)) + theme(axis.text.x = element_text(angle = -45, vjust = 1.5, hjust=-0.1),
+          legend.position="none")  + ggtitle("Figure #5")
+```
+
+Rerunning our initial plots based solely on conventional avocado data proved to exagerate the initial trends obsered in prior models. 
+
+```{r echo=FALSE}
+ df.plots.Conv <- subset(AvocadoRegionsConven, select=c("AveragePrice", "Date", "Total.Volume", "Total.Bags"))
+plot(df.plots.Conv, main = "Figure #6")
+
+ggplot(AvocadoRegionsConven, aes(Date, Total.Volume)) + geom_point(aes(color = factor(regionFactor))) + theme(legend.position = "bottom") + ggtitle("Figure #7")
+
+```
+
+## Research Question
+
+How accurately can we predict conventional avocado prices in 2018 regions based off 2015 to 2017 data?
+
+
+## Method for addressing research question
+
+Although our linear regression models demonstrated that they could accurately account for about 40% of the data points generated from our scatter plot (having an $\bar R^2$, adjusted $R^2$, of about 0.40), it appears that our data is more cyclical in nature and will be better represented by a polynomial regression model as polynomial regressions can fit a wide range of curvature and can be represented by multiple variables.  
+
+In order to insure that we use the best fit regression model, our team will also utilize the ANOVA test. ANOVA stands for the Analysis of Variance and is a method used to compare models that are based on the same data but have different number of variables. The goal is to find out if $y=x_1+x_2+x_3$ is a better model than $y=x_1+x_2$. The ANOVA test is conducted on the null hypothesis that the sample means are all equal while the alternative hypothesis is that they are not all equal and that the addition of a sample(variable) to a model is significant. 
+
+As stated before, because our models will increase in the number of independent variables we will also utilize $\bar R^2$ instead of $R^2$ as $\bar R^2$ is not influenced by an addition of a variable to a model where $R^2$ will always increase in value as more variables are added. 
+
+
+
+## Data satisfaction
+
+```{r chunk-name, include=FALSE}
+## Average Price dependent on Date
+lm.Conv.1 <- lm(AveragePrice ~ Date, data = AvocadoRegionsConven)
+summary(lm.Conv.1)
+
+## Average Price dependent on Date AND Total Bags
+lm.Conv.2 <- lm(AveragePrice ~ Date + Total.Bags, data = AvocadoRegionsConven)
+summary(lm.Conv.2)
+
+## Average Price dependent on Date AND Total Bags AND Total Volume
+lm.Conv.3 <- lm(AveragePrice ~ Date + Total.Bags + Total.Volume, data = AvocadoRegionsConven)
+summary(lm.Conv.3)
+
+```
+
+To insure that adding more variables to the linear regressions was statistically significant we ran ANOVA tests compare each model to each other. 
+
+```{r}
+lm.Conv.3 <- lm(AveragePrice ~ Date + Total.Bags + Total.Volume, data = AvocadoRegionsConven)
+summary(lm.Conv.3)
+
+anova(lm.Conv.1, lm.Conv.2, lm.Conv.3)
+```
+
+Although the final linear regression, lm.Conv.3, yielded an $\bar R^2$ of 0.4867 and the addition of its variables was proven to be significant to the model based on the ANOVA test, our group wanted to investigate further by using a polynomial regression to model the curvature in some of our initial graphs (ie Figure #7). 
+
+## Method applied and interpreted 
+
+Initial polynomial regressions:
+
+```{r include=FALSE}
+#### Polynomial Models (Conventional) ####
+## Model 1: 1 IV (Date)
+pm.Conv.1 <- lm(AveragePrice ~ poly(DateNumeric, 6, raw = TRUE),
+                               data = AvocadoRegionsConven)
+summary(pm.Conv.1)
+
+## Model 2: 2 IV's (Date AND Total.Bags)
+pm.Conv.2 <- lm(AveragePrice ~ poly(DateNumeric, 3, raw = TRUE) +
+                               poly(Total.Bags, 6, raw = TRUE),
+                               data = AvocadoRegionsConven)
+summary(pm.Conv.2)
+
+## Model 3: 3 IV's (Date AND Total.Bags AND Total.Volume)
+pm.Conv.3 <- lm(AveragePrice ~ poly(DateNumeric, 3, raw = TRUE) +
+                               poly(Total.Bags, 6, raw = TRUE) +
+                               poly(Total.Volume, 6, raw = TRUE),
+                               data = AvocadoRegionsConven)
+summary(pm.Conv.3)
+
+## Model 4: 2 IV's (Date AND Total.Volume)
+pm.Conv.4 <- lm(AveragePrice ~ poly(DateNumeric, 5, raw = TRUE) +
+                               poly(Total.Volume, 6, raw = TRUE),
+                               data = AvocadoRegionsConven)
+summary(pm.Conv.4)
+
+#### ANOVA (Conventional)
+## Models 1 and 2 (adding Total.Bags)
+anova(pm.Conv.1, pm.Conv.2)
+
+## Models 1 and 4 (adding Total.Volume)
+anova(pm.Conv.2, pm.Conv.3)
+
+## Models 4 and 3 (adding Total.Bags [already having Total.Volume])
+anova(pm.Conv.3, pm.Conv.4)
+
+```
+
+Our first polynomial regression model was comprised of solely AveragePrice dependent on DateNumeric. This lead to a decent model, however, as seen in the output of code, there are NA's correlated with some polynomial degrees above 3. Our best conclusion was that they were no longer relevant and simply cause "fog" in our model so we opted to have only DateNumeric be a degree 3 variable while the rest remained a degree 6. 
+
+For sake of space, only our final model, pm.Conv.3, is shown with it's summary and anova results. 
+
+```{r}
+pm.Conv.3 <- lm(AveragePrice ~ poly(DateNumeric, 3, raw = TRUE) +
+                               poly(Total.Bags, 6, raw = TRUE) +
+                               poly(Total.Volume, 6, raw = TRUE),
+                               data = AvocadoRegionsConven)
+summary(pm.Conv.3)
+
+anova(pm.Conv.1, pm.Conv.2 ,pm.Conv.3)
+
+```
+
+Model pm.Conv.3 produced the best $\bar R^2$ with almost all polynomial degrees proving to be statistically significant. Also, pm.Conv.3 proved to be the best/most significant model from our ANOVA test as well. 
+
+Our final goal was to predict the price of avocado using our original Kaggle data from 2015 to 2017 as training data and our 2018 data from the HASS website to compare against our training data based model pm.Conv.3.  
+
+```{r}
+#### Predictions for Conventional
+## pm.Conv.3 (lm.Conv.3 is the sweet spot)
+price.pred.Conv <- data.frame(predict(pm.Conv.3, avocadoData2018RegionsConven))
+names(price.pred.Conv) <- c("pred")
+price.pred.Conv$actual <- avocadoData2018RegionsConven$AveragePrice
+price.pred.Conv$diff <- abs(price.pred.Conv$pred - price.pred.Conv$actual)
+mean(price.pred.Conv$diff)
+
+
+plot(price.pred.Conv$pred, price.pred.Conv$actual,
+     xlab="predicted", ylab="actual", main = "Actual vs Predicted Price Differences, Figure #8") + abline(a=0, b=1)
+price.pred.Conv$date = avocadoData2018RegionsConven$Date
+price.pred.Conv$region = avocadoData2018RegionsConven$regionFactor
+ggplot(price.pred.Conv, aes(date, diff)) + geom_point(aes(color = factor(region))) + theme(legend.position = "bottom") + ggtitle("Price Differences Compared to Time, Figure #9")
+
+```
+
+After utilizing our trained data from Kaggle and comparing it against the 2018 data, our average price difference was approximately $0.18 (0.1774439). As depicted in Figure #8, the actual prices tend to be lower but in general the spread of the data is relatively condensed. Figure #9 also shows our differences in predicted and actual spreading further apart as time goes on. 
+
+## Conclusion 
+
+Our goal was to accurately predict avocado prices, specifically in 2018. After testing of several linear and polynomial regressions our best model yielded an $\bar R^2$ of 0.5959, indicating that our model could accurately account for about 60% of our Average conventional avocado prices ranging from the years 2015 to 2017. In addition to a strong $\bar R^2$, our model was proven to statistically significant from our ANOVA test. Lastly, our average predicted price for a conventional avocado in 2018 resulted in an average of about \$0.18 difference from the actual price.
+
+
+## Citations
+
+Kaggle Data Set:
+
+  Kiggins, Justin. “Avocado Prices.” Kaggle, 6 June 2018, www.kaggle.com/neuromusic/avocado-prices. 
+
+2018 HASS Avocado Data Set (*** Note: we did have to become members to retrieve data set, see zip file for data):
+
+  https://hassavocadoboard.com/
+
+
+
+
+
+
+

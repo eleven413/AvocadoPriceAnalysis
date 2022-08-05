@@ -1,0 +1,71 @@
+---
+title: "COMP4441_FinalProject"
+author: "Daniel D'Aquila"
+date: "8/9/2021"
+output: html_document
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(knitr)
+library(ggpubr)
+library(boot)
+library(lawstat)
+library(ggplot2)
+```
+
+Loading Data into R Studio 
+```{r}
+avocadoData <- read.csv("avocado.csv")
+
+names(avocadoData)
+sapply(avocadoData, class)
+avocadoData$Date <- as.Date(avocadoData$Date,format="%Y-%m-%d")
+
+colnames(avocadoData)[colnames(avocadoData) == "X"] <- "IndexNum"
+
+sapply(avocadoData, class)
+
+cado <- data.frame(avocadoData)
+
+
+```
+
+
+```{r}
+plot(AveragePrice~Date, data = avocadoData)
+
+plot(AveragePrice~year, data = avocadoData)
+
+plot(AveragePrice~region, data = avocadoData)
+
+#Trying to see which state/region has the highest demand 
+
+#factor the region in order to view it on a plot chart
+avocadoData$regionFactor <- factor(avocadoData$region)
+
+plot(AveragePrice~regionFactor, data = avocadoData) + abline(h = mean(avocadoData$AveragePrice), col = "green")
+
+q <- ggplot(cado, aes(region, Total.Volume)) + geom_point()
+
+q + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+```
+
+```{r}
+
+#converting the date field to a month-year format to view the data at a different time scale
+cado$MonthYr <- format(as.Date(cado$Date), "%Y-%m")
+
+view(cado)
+
+avocadoData$MonthYr <- format(as.Date(avocadoData$Date), "%Y-%m")
+
+view(avocadoData)
+
+plot(AveragePrice~year, data = avocadoData)
+
+```
